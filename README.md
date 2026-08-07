@@ -38,11 +38,29 @@ Each generated case includes:
 - **boundary** — inputs at the edges of declared constraints (`minLength`, `maxLength`,
   `minimum`, `maximum`, `minItems`, `maxItems`)
 - **invalid** — missing required fields, wrong types, out-of-range values,
-  oversized strings/arrays, and injection-like strings (SQL, script, path traversal,
-  command injection, template injection, null bytes, format strings)
+  oversized strings/arrays, and the curated adversarial payload pack (see below)
 
 Supported schema types: `string`, `number`, `integer`, `boolean`, `array`, `object`
 (including nested `object` properties).
+
+### Adversarial payload pack
+
+`src/adversarial.js` exports a curated set of string payloads representative of
+real attack classes, each tagged with its category:
+
+- **prompt-injection** — instruction-override and role-confusion strings
+  (e.g. "ignore all previous instructions", fake `<system>`/tool-output
+  delimiters) aimed at agent/LLM-facing tools
+- **path-traversal** — relative (`../`), encoded (`%2e%2e%2f`), absolute
+  (`/etc/shadow`), UNC, and `file://` traversal strings
+- **misc-injection** — SQL, script, shell command, template, null-byte, and
+  format-string payloads
+
+`generateCases` injects every payload as an `invalid` case for any root-level
+`string` schema, and — for `object` schemas — scopes the whole pack to *each*
+string-typed property individually (e.g. `injection-query-ignore-instructions`),
+while leaving non-string properties (numbers, booleans, arrays) untouched. Each
+resulting case carries a `tag` field identifying its adversarial class.
 
 ### Handler harness
 

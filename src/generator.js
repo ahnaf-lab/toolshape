@@ -8,18 +8,19 @@
  *   { name, category: 'valid' | 'boundary' | 'invalid', value, description }
  */
 
-const INJECTION_STRINGS = [
-  { name: 'sql-injection', value: "'; DROP TABLE users; --" },
-  { name: 'script-injection', value: '<script>alert(1)</script>' },
-  { name: 'path-traversal', value: '../../../../etc/passwd' },
-  { name: 'command-injection', value: '; rm -rf / #' },
-  { name: 'template-injection', value: '${7*7}' },
-  { name: 'null-byte', value: 'evil\u0000.txt' },
-  { name: 'format-string', value: '%n%n%n%s%s%s' },
-];
+const { adversarialStringPayloads } = require('./adversarial');
 
-function mkCase(name, category, value, description) {
-  return { name, category, value, description };
+function mkCase(name, category, value, description, tag) {
+  const c = { name, category, value, description };
+  if (tag) c.tag = tag;
+  return c;
+}
+
+/** True if a schema resolves to the 'string' variant generator (explicit or default type). */
+function isStringSchema(schema) {
+  if (!schema || typeof schema !== 'object') return false;
+  const type = schema.type || 'string';
+  return type === 'string';
 }
 
 /** Produce a single representative valid value for a schema (used to build objects/arrays). */
@@ -119,8 +120,13 @@ function stringVariants(schema) {
     invalid.push({ name: 'not-in-enum', value: '__not_in_enum__', description: 'value not present in enum' });
   }
   invalid.push({ name: 'oversized', value: 'x'.repeat(10000), description: 'oversized payload (10000 chars)' });
-  for (const inj of INJECTION_STRINGS) {
-    invalid.push({ name: inj.name, value: inj.value, description: `injection-like string (${inj.name})` });
+  for (const payload of adversarialStringPayloads()) {
+    invalid.push({
+      name: payload.name,
+      value: payload.value,
+      description: `adversarial ${payload.tag} payload (${payload.name})`,
+      tag: payload.tag,
+    });
   }
 
   return { valid, boundary, invalid };
@@ -280,6 +286,26 @@ function generateObjectCases(schema) {
     cases.push(mkCase(`wrong-type-${key}`, 'invalid', variant, `property "${key}" has wrong type (expected ${propType})`));
   }
 
+  // Inject the curated adversarial payload pack into each string-typed
+  // property individually, so coverage matches the object's actual shape
+  // (a payload never lands in a number/boolean/array property).
+  for (const key of propNames) {
+    const propSchema = props[key];
+    if (!isStringSchema(propSchema)) continue;
+    for (const payload of adversarialStringPayloads()) {
+      const variant = { ...baseValid, [key]: payload.value };
+      cases.push(
+        mkCase(
+          `injection-${key}-${payload.name}`,
+          'invalid',
+          variant,
+          `property "${key}" holds adversarial ${payload.tag} payload (${payload.name})`,
+          payload.tag
+        )
+      );
+    }
+  }
+
   if (schema.additionalProperties === false) {
     const variant = { ...baseValid, __unexpected_field__: 'unexpected' };
     cases.push(mkCase('additional-property', 'invalid', variant, 'unexpected additional property not permitted by schema (additionalProperties: false)'));
@@ -310,9 +336,9 @@ function generateCases(schema) {
 
   const variants = variantsForSchema(schema);
   const cases = [];
-  for (const v of variants.valid) cases.push(mkCase(`valid-${v.name}`, 'valid', v.value, v.description));
-  for (const v of variants.boundary) cases.push(mkCase(`boundary-${v.name}`, 'boundary', v.value, v.description));
-  for (const v of variants.invalid) cases.push(mkCase(`invalid-${v.name}`, 'invalid', v.value, v.description));
+  for (const v of variants.valid) cases.push(mkCase(`valid-${v.name}`, 'valid', v.value, v.description, v.tag));
+  for (const v of variants.boundary) cases.push(mkCase(`boundary-${v.name}`, 'boundary', v.value, v.description, v.tag));
+  for (const v of variants.invalid) cases.push(mkCase(`invalid-${v.name}`, 'invalid', v.value, v.description, v.tag));
   return cases;
 }
 
