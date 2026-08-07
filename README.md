@@ -44,13 +44,46 @@ Each generated case includes:
 Supported schema types: `string`, `number`, `integer`, `boolean`, `array`, `object`
 (including nested `object` properties).
 
+### Handler harness
+
+`src/harness.js` runs a handler function against generated cases inside a sandboxed
+worker thread with a timeout, and classifies each result:
+
+```js
+const { generateCases, runCases, summarize } = require('./src/index');
+
+const cases = generateCases(schema);
+const results = await runCases('./path/to/handler.js', cases, { timeoutMs: 2000 });
+console.log(summarize(results));
+// => { total, 'safe-reject', crash, hang, 'unexpected-success', success }
+```
+
+The handler module should export a function (or `{ handler: fn }`), sync or async.
+Each result is classified as:
+
+- **safe-reject** — the handler threw/rejected an `Error` in a controlled way
+  (caught, did not crash or hang the process)
+- **crash** — the handler crashed: an uncaught asynchronous exception, unhandled
+  promise rejection, a thrown non-`Error` value, a stack overflow, or a failure to load
+- **hang** — the handler did not respond within the timeout (its worker thread is
+  forcibly terminated, so even a busy `while (true) {}` loop is caught)
+- **unexpected-success** — the handler returned successfully for a case generated
+  from the `invalid` category, i.e. it silently accepted input that should have
+  been rejected
+- **success** — the handler returned successfully for a `valid`/`boundary` case
+
 ### CLI
 
 ```bash
+# Print generated cases as JSON
 node bin/cli.js generate path/to/schema.json
+
+# Generate cases and run them against a handler, printing a summary + per-case results
+node bin/cli.js run path/to/schema.json path/to/handler.js [--timeout=ms]
 ```
 
-Prints the generated cases as JSON to stdout.
+`run` exits with a non-zero status if any case is classified `crash`, `hang`, or
+`unexpected-success`.
 
 ## Status
 
