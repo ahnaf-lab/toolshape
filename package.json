@@ -1,0 +1,16 @@
+{
+  "name": "toolshape",
+  "version": "0.1.0",
+  "description": "Generate boundary and malformed-input test cases from a JSON Schema, for testing MCP/agent tool handlers.",
+  "main": "src/index.js",
+  "bin": {
+    "toolshape": "bin/cli.js"
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}
