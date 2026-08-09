@@ -5,11 +5,12 @@ const fs = require('fs');
 const path = require('path');
 const { generateCases } = require('../src/generator');
 const { runCases, summarize } = require('../src/harness');
+const { buildReport, formatSummary } = require('../src/report');
 
 function printUsage() {
   console.error('Usage:');
   console.error('  toolshape generate <schema.json>');
-  console.error('  toolshape run <schema.json> <handler.js> [--timeout=ms]');
+  console.error('  toolshape run <schema.json> <handler.js> [--timeout=ms] [--report=path.json] [--json]');
 }
 
 function loadSchema(schemaPath) {
@@ -51,6 +52,9 @@ async function runRun(args) {
   const [schemaPath, handlerPath] = positional;
   const timeoutArg = args.find((a) => a.startsWith('--timeout='));
   const timeoutMs = timeoutArg ? Number(timeoutArg.slice('--timeout='.length)) : undefined;
+  const reportArg = args.find((a) => a.startsWith('--report='));
+  const reportPath = reportArg ? reportArg.slice('--report='.length) : undefined;
+  const asJson = args.includes('--json');
 
   if (!schemaPath || !handlerPath) {
     printUsage();
@@ -78,12 +82,25 @@ async function runRun(args) {
 
   const resolvedHandlerPath = path.resolve(process.cwd(), handlerPath);
   const options = timeoutMs ? { timeoutMs } : {};
+  const start = Date.now();
   const results = await runCases(resolvedHandlerPath, cases, options);
+  const durationMs = Date.now() - start;
   const summary = summarize(results);
+  const report = buildReport({ schemaPath, handlerPath, summary, results, durationMs });
 
-  console.log(JSON.stringify({ summary, results }, null, 2));
+  if (asJson) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(formatSummary(report));
+  }
 
-  if (summary.crash > 0 || summary.hang > 0 || summary['unexpected-success'] > 0) {
+  if (reportPath) {
+    const resolvedReportPath = path.resolve(process.cwd(), reportPath);
+    fs.writeFileSync(resolvedReportPath, JSON.stringify(report, null, 2));
+    console.error(`Report written to ${reportPath}`);
+  }
+
+  if (!report.pass) {
     process.exitCode = 1;
   }
 }

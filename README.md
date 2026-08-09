@@ -96,12 +96,34 @@ Each result is classified as:
 # Print generated cases as JSON
 node bin/cli.js generate path/to/schema.json
 
-# Generate cases and run them against a handler, printing a summary + per-case results
-node bin/cli.js run path/to/schema.json path/to/handler.js [--timeout=ms]
+# Generate cases, run them against a handler, and print a pass/fail summary
+node bin/cli.js run path/to/schema.json path/to/handler.js [--timeout=ms] [--report=path.json] [--json]
 ```
 
-`run` exits with a non-zero status if any case is classified `crash`, `hang`, or
-`unexpected-success`.
+By default `run` prints a human-readable summary (counts per classification,
+plus one line per unsafe case) and exits non-zero if any case is classified
+`crash`, `hang`, or `unexpected-success`:
+
+```
+toolshape run: schema.json + handler.js
+
+  33 case(s) run in 5997ms
+  safe-reject:         7
+  success:             5
+  unexpected-success:  21
+  crash:               0
+  hang:                0
+
+FAIL — 21 case(s) did not fail safely
+  unexpected-success   wrong-type-limit   property "limit" has wrong type (expected integer)
+  ...
+```
+
+- `--json` prints the full structured report to stdout instead of the
+  human-readable summary.
+- `--report=path.json` writes the full structured report to a file
+  (`{ tool, generatedAt, schema, handler, durationMs, pass, summary, results }`),
+  independent of whether `--json` was also passed.
 
 ## Status
 
