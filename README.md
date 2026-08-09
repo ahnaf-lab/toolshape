@@ -125,6 +125,39 @@ FAIL — 21 case(s) did not fail safely
   (`{ tool, generatedAt, schema, handler, durationMs, pass, summary, results }`),
   independent of whether `--json` was also passed.
 
+### Regression baseline
+
+`--baseline=path.json` saves and compares each case's classification across
+runs, so a schema or handler change that turns a previously-safe case (e.g.
+`safe-reject`) into an unsafe one (`crash`, `hang`, `unexpected-success`) is
+called out explicitly as a **regression**, distinct from cases that were
+already unsafe before the change:
+
+```bash
+# First run: no baseline file yet, so one is bootstrapped from this run
+node bin/cli.js run schema.json handler.js --baseline=.toolshape-baseline.json
+
+# Later run: compares against the saved baseline and prints a diff
+node bin/cli.js run schema.json handler.js --baseline=.toolshape-baseline.json
+```
+
+```
+baseline: .toolshape-baseline.json
+  unchanged: 30  newly-unsafe: 1  newly-safe: 0  added: 0  removed: 0
+
+REGRESSION — 1 case(s) newly unsafe since baseline:
+  invalid-wrong-type-limit    safe-reject -> unexpected-success
+```
+
+- The diff also reports `added`/`removed` cases (e.g. a schema property was
+  added or removed) and `newly-safe` cases (a previously-unsafe case is now
+  handled correctly).
+- The baseline file itself is left untouched unless `--update-baseline` is
+  also passed, so a regression stays flagged on every subsequent run until a
+  developer deliberately accepts the new state.
+- When `--json` is used, the diff is included in the report under the
+  `baselineDiff` key.
+
 ## Status
 
 Built autonomously with Claude Code, gated on passing tests (`npm test`).

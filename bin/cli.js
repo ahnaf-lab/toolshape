@@ -6,11 +6,15 @@ const path = require('path');
 const { generateCases } = require('../src/generator');
 const { runCases, summarize } = require('../src/harness');
 const { buildReport, formatSummary } = require('../src/report');
+const { buildBaseline, compareBaseline, formatBaselineDiff } = require('../src/baseline');
 
 function printUsage() {
   console.error('Usage:');
   console.error('  toolshape generate <schema.json>');
-  console.error('  toolshape run <schema.json> <handler.js> [--timeout=ms] [--report=path.json] [--json]');
+  console.error(
+    '  toolshape run <schema.json> <handler.js> [--timeout=ms] [--report=path.json] [--json]' +
+      ' [--baseline=path.json] [--update-baseline]'
+  );
 }
 
 function loadSchema(schemaPath) {
@@ -55,6 +59,9 @@ async function runRun(args) {
   const reportArg = args.find((a) => a.startsWith('--report='));
   const reportPath = reportArg ? reportArg.slice('--report='.length) : undefined;
   const asJson = args.includes('--json');
+  const baselineArg = args.find((a) => a.startsWith('--baseline='));
+  const baselinePath = baselineArg ? baselineArg.slice('--baseline='.length) : undefined;
+  const updateBaseline = args.includes('--update-baseline');
 
   if (!schemaPath || !handlerPath) {
     printUsage();
@@ -88,10 +95,37 @@ async function runRun(args) {
   const summary = summarize(results);
   const report = buildReport({ schemaPath, handlerPath, summary, results, durationMs });
 
+  let baselineDiff;
+  if (baselinePath) {
+    const resolvedBaselinePath = path.resolve(process.cwd(), baselinePath);
+    if (fs.existsSync(resolvedBaselinePath)) {
+      let previousBaseline;
+      try {
+        previousBaseline = JSON.parse(fs.readFileSync(resolvedBaselinePath, 'utf8'));
+      } catch (err) {
+        console.error(`Failed to read baseline at ${baselinePath}: ${err.message}`);
+        process.exitCode = 1;
+        return;
+      }
+      baselineDiff = compareBaseline(previousBaseline, results);
+      report.baselineDiff = baselineDiff;
+      if (updateBaseline) {
+        fs.writeFileSync(resolvedBaselinePath, JSON.stringify(buildBaseline(report), null, 2));
+      }
+    } else {
+      fs.writeFileSync(resolvedBaselinePath, JSON.stringify(buildBaseline(report), null, 2));
+      console.error(`No baseline found — created one at ${baselinePath} from ${results.length} case(s).`);
+    }
+  }
+
   if (asJson) {
     console.log(JSON.stringify(report, null, 2));
   } else {
     console.log(formatSummary(report));
+    if (baselineDiff) {
+      console.log('');
+      console.log(formatBaselineDiff(baselineDiff, baselinePath));
+    }
   }
 
   if (reportPath) {

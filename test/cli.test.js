@@ -88,3 +88,64 @@ test('run: missing arguments prints usage and exits non-zero', () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Usage:/);
 });
+
+test('run --baseline: with no existing baseline file, bootstraps one and reports it on stderr', () => {
+  const baselinePath = tmpReportPath();
+  try {
+    assert.ok(!fs.existsSync(baselinePath));
+    const result = runCli(['run', schema('greeting.json'), handler('always-reject.js'), `--baseline=${baselinePath}`]);
+    assert.equal(result.status, 0);
+    assert.match(result.stderr, /No baseline found/);
+    assert.ok(fs.existsSync(baselinePath), 'expected baseline file to be created');
+
+    const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
+    assert.equal(baseline.tool, 'toolshape');
+    assert.ok(Object.keys(baseline.cases).length > 0);
+  } finally {
+    fs.rmSync(baselinePath, { force: true });
+  }
+});
+
+test('run --baseline: against an existing baseline, prints a diff with no regressions for an unchanged handler', () => {
+  const baselinePath = tmpReportPath();
+  try {
+    runCli(['run', schema('greeting.json'), handler('always-reject.js'), `--baseline=${baselinePath}`]);
+    const second = runCli(['run', schema('greeting.json'), handler('always-reject.js'), `--baseline=${baselinePath}`]);
+    assert.equal(second.status, 0);
+    assert.match(second.stdout, /baseline:/);
+    assert.doesNotMatch(second.stdout, /REGRESSION/);
+  } finally {
+    fs.rmSync(baselinePath, { force: true });
+  }
+});
+
+test('run --baseline: flags a REGRESSION when a case flips from safe to unsafe between runs', () => {
+  const baselinePath = tmpReportPath();
+  try {
+    runCli(['run', schema('search.json'), handler('always-reject.js'), `--baseline=${baselinePath}`]);
+    const second = runCli(['run', schema('search.json'), handler('buggy-search.js'), `--baseline=${baselinePath}`, '--json']);
+    assert.equal(second.status, 1);
+    const report = JSON.parse(second.stdout);
+    assert.ok(report.baselineDiff);
+    assert.equal(report.baselineDiff.hasRegressions, true);
+    assert.ok(report.baselineDiff.newlyUnsafe.length > 0);
+  } finally {
+    fs.rmSync(baselinePath, { force: true });
+  }
+});
+
+test('run --baseline --update-baseline: overwrites the saved baseline with the current run', () => {
+  const baselinePath = tmpReportPath();
+  try {
+    runCli(['run', schema('greeting.json'), handler('always-reject.js'), `--baseline=${baselinePath}`]);
+    const before = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
+
+    runCli(['run', schema('greeting.json'), handler('always-reject.js'), `--baseline=${baselinePath}`, '--update-baseline']);
+    const after = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
+
+    assert.notEqual(before.savedAt, after.savedAt);
+    assert.deepEqual(after.cases, before.cases);
+  } finally {
+    fs.rmSync(baselinePath, { force: true });
+  }
+});
