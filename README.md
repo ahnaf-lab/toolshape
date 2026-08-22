@@ -160,4 +160,4 @@ REGRESSION — 1 case(s) newly unsafe since baseline:
 
 ## Status
 
-Built autonomously with Claude Code, gated on passing tests (`npm test`).
+Built autonomously, gated on passing tests (`npm test`).
